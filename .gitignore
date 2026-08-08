@@ -1,0 +1,12 @@
+# 运行产物 / 临时文件
+dump.rdb
+.trae-html-share-packages/
+skills2-2/
+
+# 客户端构建产物
+social/client/index.html
+social/client/dist/
+social/client/node_modules/
+
+# 环境配置
+.env
