@@ -16,7 +16,10 @@
       "name": "Schedule Trigger",
       "type": "n8n-nodes-base.scheduleTrigger",
       "typeVersion": 1.3,
-      "position": [0, 0]
+      "position": [
+        0,
+        0
+      ]
     },
     {
       "parameters": {
@@ -26,7 +29,10 @@
       "name": "Code - 选题",
       "type": "n8n-nodes-base.code",
       "typeVersion": 2,
-      "position": [224, 0]
+      "position": [
+        224,
+        0
+      ]
     },
     {
       "parameters": {
@@ -40,7 +46,10 @@
       "name": "AI Agent",
       "type": "@n8n/n8n-nodes-langchain.agent",
       "typeVersion": 3.1,
-      "position": [448, 0]
+      "position": [
+        448,
+        0
+      ]
     },
     {
       "parameters": {
@@ -50,7 +59,10 @@
       "name": "DeepSeek Chat Model",
       "type": "@n8n/n8n-nodes-langchain.lmChatDeepSeek",
       "typeVersion": 1,
-      "position": [544, -224],
+      "position": [
+        544,
+        -224
+      ],
       "credentials": {
         "deepSeekApi": {
           "id": "SgrYhV32MeVZERum",
@@ -66,28 +78,38 @@
       "name": "Code - 解析AI输出",
       "type": "n8n-nodes-base.code",
       "typeVersion": 2,
-      "position": [672, 0]
+      "position": [
+        672,
+        0
+      ]
     },
     {
       "parameters": {
         "url": "https://word.apexck.com/wp-json/wp/v2/posts?per_page=100&_fields=slug&status=publish",
         "options": {}
       },
+      "alwaysOutputData": true,
       "id": "node-dedup-http",
       "name": "HTTP Request - 查重",
       "type": "n8n-nodes-base.httpRequest",
       "typeVersion": 4.2,
-      "position": [848, 208]
+      "position": [
+        848,
+        208
+      ]
     },
     {
       "parameters": {
-        "jsCode": "const posts = $input.all();\nconst art = $('Code - 解析AI输出').all()[0].json;\nconst targetSlug = String(art.slug || '');\nlet isDuplicate = false;\nfor (const p of posts) {\n  const s = String(p.json && p.json.slug || '');\n  if (s && targetSlug && s === targetSlug) { isDuplicate = true; break; }\n}\nreturn [{ json: { ...art, isDuplicate } }];"
+        "jsCode": "const posts = $input.all();\nconst art = $('Code - 解析AI输出').all()[0].json;\nconst targetSlug = String(art.slug || '').trim();\nconst isDuplicate = Boolean(targetSlug) && posts.some(item => String(item.json?.slug || '').trim() === targetSlug);\nreturn [{ json: { ...art, isDuplicate } }];"
       },
       "id": "node-dedup-code",
       "name": "Code - 判断重复",
       "type": "n8n-nodes-base.code",
       "typeVersion": 2,
-      "position": [1040, 208]
+      "position": [
+        1040,
+        208
+      ]
     },
     {
       "parameters": {
@@ -117,73 +139,10 @@
       "name": "IF - 是否重复",
       "type": "n8n-nodes-base.if",
       "typeVersion": 2.3,
-      "position": [1232, 0]
-    },
-    {
-      "parameters": {
-        "method": "GET",
-        "url": "https://word.apexck.com/wp-json/wp/v2/categories?per_page=100&_fields=id,name",
-        "responseFormat": "json",
-        "options": {}
-      },
-      "id": "node-cat-get",
-      "name": "HTTP - 获取分类",
-      "type": "n8n-nodes-base.httpRequest",
-      "typeVersion": 4.2,
-      "position": [1600, 160]
-    },
-    {
-      "parameters": {
-        "method": "GET",
-        "url": "https://word.apexck.com/wp-json/wp/v2/tags?per_page=100&_fields=id,name",
-        "responseFormat": "json",
-        "options": {}
-      },
-      "id": "node-tag-get",
-      "name": "HTTP - 获取标签",
-      "type": "n8n-nodes-base.httpRequest",
-      "typeVersion": 4.2,
-      "position": [1600, 400]
-    },
-    {
-      "parameters": {
-        "jsCode": "const tgs = $input.all();\nconst cats = $('HTTP - 获取分类').all();\nconst art = $('Code - 判断重复').first().json;\nconst catName = String(art.category || '').trim();\nconst tagNames = Array.isArray(art.tags) ? art.tags.map(t => String(t).trim()).filter(Boolean) : [];\nconst catByName = {};\nfor (const c of cats) { if (c.json && c.json.name && c.json.id) catByName[String(c.json.name).trim()] = Number(c.json.id); }\nconst tagByName = {};\nfor (const t of tgs) { if (t.json && t.json.name && t.json.id) tagByName[String(t.json.name).trim()] = Number(t.json.id); }\nconst categoryId = catByName[catName] || null;\nconst existingTagIds = tagNames.map(n => tagByName[n]).filter(id => id !== undefined);\nconst missingCategoryName = categoryId ? '' : catName;\nconst missingTagNames = tagNames.filter(n => !tagByName[n]);\nreturn [{ json: { ...art, categoryId, existingTagIds, missingCategoryName, missingTagNames } }];"
-      },
-      "id": "node-term-parse",
-      "name": "Code - 解析术语ID",
-      "type": "n8n-nodes-base.code",
-      "typeVersion": 2,
-      "position": [1840, 280]
-    },
-    {
-      "parameters": {
-        "conditions": {
-          "options": {
-            "caseSensitive": true,
-            "leftValue": "",
-            "typeValidation": "loose",
-            "version": 1
-          },
-          "conditions": [
-            {
-              "id": "cond-cat",
-              "leftValue": "={{ $json.missingCategoryName }}",
-              "rightValue": "",
-              "operator": {
-                "type": "string",
-                "operation": "notEmpty"
-              }
-            }
-          ],
-          "combinator": "and"
-        },
-        "options": {}
-      },
-      "id": "node-if-cat",
-      "name": "IF - 分类缺失",
-      "type": "n8n-nodes-base.if",
-      "typeVersion": 2.3,
-      "position": [2080, 280]
+      "position": [
+        1232,
+        0
+      ]
     },
     {
       "parameters": {
@@ -193,7 +152,7 @@
         "nodeCredentialType": "wordpressApi",
         "sendBody": true,
         "specifyBody": "json",
-        "jsonBody": "={{ JSON.stringify({ name: $json.missingCategoryName }) }}",
+        "jsonBody": "={{ JSON.stringify({ name: $json.category }) }}",
         "responseFormat": "json",
         "options": {}
       },
@@ -201,84 +160,30 @@
       "name": "HTTP - 创建分类",
       "type": "n8n-nodes-base.httpRequest",
       "typeVersion": 4.2,
-      "position": [2320, 120],
+      "position": [
+        1840,
+        120
+      ],
       "credentials": {
         "wordpressApi": {
           "id": "qsJwYYosAjqF2zc9",
           "name": "Wordpress account"
         }
-      }
-    },
-    {
-      "parameters": {
-        "jsCode": "const created = $input.first().json;\nconst art = $('Code - 解析术语ID').first().json;\nreturn [{ json: { ...art, categoryId: Number(created.id), missingCategoryName: '' } }];"
       },
-      "id": "node-cat-inject",
-      "name": "Code - 注入分类ID",
-      "type": "n8n-nodes-base.code",
-      "typeVersion": 2,
-      "position": [2560, 120]
+      "continueOnFail": true
     },
     {
       "parameters": {
-        "jsCode": "const art = $('Code - 解析术语ID').first().json;\nreturn [{ json: { ...art } }];"
-      },
-      "id": "node-cat-keep",
-      "name": "Code - 保留分类ID",
-      "type": "n8n-nodes-base.code",
-      "typeVersion": 2,
-      "position": [2560, 440]
-    },
-    {
-      "parameters": {
-        "mode": "combineByPosition",
-        "options": {}
-      },
-      "id": "node-merge-cat",
-      "name": "Merge - 分类",
-      "type": "n8n-nodes-base.merge",
-      "typeVersion": 2,
-      "position": [2800, 280]
-    },
-    {
-      "parameters": {
-        "conditions": {
-          "options": {
-            "caseSensitive": true,
-            "leftValue": "",
-            "typeValidation": "loose",
-            "version": 1
-          },
-          "conditions": [
-            {
-              "id": "cond-tags",
-              "leftValue": "={{ $json.missingTagNames.length }}",
-              "rightValue": 0,
-              "operator": {
-                "type": "number",
-                "operation": "gt"
-              }
-            }
-          ],
-          "combinator": "and"
-        },
-        "options": {}
-      },
-      "id": "node-if-tags",
-      "name": "IF - 标签缺失",
-      "type": "n8n-nodes-base.if",
-      "typeVersion": 2.3,
-      "position": [3040, 280]
-    },
-    {
-      "parameters": {
-        "jsCode": "const item = $json;\nconst names = Array.isArray(item.missingTagNames) ? item.missingTagNames : [];\nif (names.length === 0) return [{ json: { ...item, tagName: '' } }];\nreturn names.map(n => ({ json: { ...item, tagName: n } }));"
+        "jsCode": "const item = $json;\nconst names = Array.isArray(item.tagNames) ? item.tagNames : [];\nreturn names.map(tagName => ({ json: { ...item, tagName } }));"
       },
       "id": "node-tag-expand",
       "name": "Code - 展开标签",
       "type": "n8n-nodes-base.code",
       "typeVersion": 2,
-      "position": [3280, 120]
+      "position": [
+        2320,
+        120
+      ]
     },
     {
       "parameters": {
@@ -296,44 +201,17 @@
       "name": "HTTP - 创建标签",
       "type": "n8n-nodes-base.httpRequest",
       "typeVersion": 4.2,
-      "position": [3520, 120],
+      "position": [
+        2560,
+        120
+      ],
       "credentials": {
         "wordpressApi": {
           "id": "qsJwYYosAjqF2zc9",
           "name": "Wordpress account"
         }
-      }
-    },
-    {
-      "parameters": {
-        "jsCode": "const items = $input.all();\nconst art = $('Merge - 分类').first().json;\nconst createdTagIds = items.map(i => i.json && i.json.id).filter(id => id !== undefined && id !== '');\nconst ex = Array.isArray(art.existingTagIds) ? art.existingTagIds.map(Number) : [];\nconst finalTagIds = [...ex, ...createdTagIds.map(Number)];\nreturn [{ json: { ...art, finalTagIds } }];"
       },
-      "id": "node-tag-merge",
-      "name": "Code - 合并标签ID",
-      "type": "n8n-nodes-base.code",
-      "typeVersion": 2,
-      "position": [3760, 120]
-    },
-    {
-      "parameters": {
-        "jsCode": "const art = $('Merge - 分类').first().json;\nconst ex = Array.isArray(art.existingTagIds) ? art.existingTagIds.map(Number) : [];\nreturn [{ json: { ...art, finalTagIds: ex } }];"
-      },
-      "id": "node-tag-keep",
-      "name": "Code - 保留标签",
-      "type": "n8n-nodes-base.code",
-      "typeVersion": 2,
-      "position": [3280, 440]
-    },
-    {
-      "parameters": {
-        "mode": "combineByPosition",
-        "options": {}
-      },
-      "id": "node-merge-tags",
-      "name": "Merge - 标签",
-      "type": "n8n-nodes-base.merge",
-      "typeVersion": 2,
-      "position": [3760, 280]
+      "continueOnFail": true
     },
     {
       "parameters": {
@@ -343,7 +221,10 @@
       "name": "Code - 组装发布参数",
       "type": "n8n-nodes-base.code",
       "typeVersion": 2,
-      "position": [4000, 280]
+      "position": [
+        4000,
+        280
+      ]
     },
     {
       "parameters": {
@@ -361,13 +242,55 @@
       "name": "HTTP - 创建文章",
       "type": "n8n-nodes-base.httpRequest",
       "typeVersion": 4.2,
-      "position": [4240, 280],
+      "position": [
+        4240,
+        280
+      ],
       "credentials": {
         "wordpressApi": {
           "id": "qsJwYYosAjqF2zc9",
           "name": "Wordpress account"
         }
       }
+    },
+    {
+      "parameters": {
+        "jsCode": "const art = $('Code - 判断重复').first().json;\nconst defaults = ['技术教程', '实用技巧', '网站运维'];\nconst tagNames = [...new Set((Array.isArray(art.tags) ? art.tags : []).map(tag => String(tag).trim()).filter(Boolean))];\nfor (const tag of defaults) {\n  if (tagNames.length >= 3) break;\n  if (!tagNames.includes(tag)) tagNames.push(tag);\n}\nreturn [{ json: { ...art, category: String(art.category || '未分类').trim(), tagNames } }];"
+      },
+      "id": "node-term-prepare",
+      "name": "Code - 准备术语",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        1600,
+        120
+      ]
+    },
+    {
+      "parameters": {
+        "jsCode": "const response = $input.first().json;\nconst art = $('Code - 准备术语').first().json;\nconst termId = response.id ?? response.term_id ?? response.data?.term_id ?? response.error?.data?.term_id ?? response.error?.response?.data?.term_id;\nconst categoryId = Number(termId);\nif (!Number.isInteger(categoryId) || categoryId <= 0) throw new Error('无法创建或取得分类 term_id: ' + JSON.stringify(response));\nreturn [{ json: { ...art, categoryId } }];"
+      },
+      "id": "node-category-resolve",
+      "name": "Code - 取得分类ID",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        2080,
+        120
+      ]
+    },
+    {
+      "parameters": {
+        "jsCode": "const art = $('Code - 取得分类ID').first().json;\nconst finalTagIds = [...new Set($input.all().map(item => {\n  const response = item.json;\n  return Number(response.id ?? response.term_id ?? response.data?.term_id ?? response.error?.data?.term_id ?? response.error?.response?.data?.term_id);\n}).filter(id => Number.isInteger(id) && id > 0))];\nif (finalTagIds.length !== art.tagNames.length) throw new Error('无法创建或取得全部标签 term_id');\nreturn [{ json: { ...art, finalTagIds } }];"
+      },
+      "id": "node-tags-resolve",
+      "name": "Code - 重组标签ID",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        2800,
+        120
+      ]
     }
   ],
   "connections": {
@@ -453,58 +376,18 @@
         [],
         [
           {
-            "node": "HTTP - 获取分类",
+            "node": "Code - 准备术语",
             "type": "main",
             "index": 0
           }
         ]
       ]
     },
-    "HTTP - 获取分类": {
-      "main": [
-        [
-          {
-            "node": "HTTP - 获取标签",
-            "type": "main",
-            "index": 0
-          }
-        ]
-      ]
-    },
-    "HTTP - 获取标签": {
-      "main": [
-        [
-          {
-            "node": "Code - 解析术语ID",
-            "type": "main",
-            "index": 0
-          }
-        ]
-      ]
-    },
-    "Code - 解析术语ID": {
-      "main": [
-        [
-          {
-            "node": "IF - 分类缺失",
-            "type": "main",
-            "index": 0
-          }
-        ]
-      ]
-    },
-    "IF - 分类缺失": {
+    "Code - 准备术语": {
       "main": [
         [
           {
             "node": "HTTP - 创建分类",
-            "type": "main",
-            "index": 0
-          }
-        ],
-        [
-          {
-            "node": "Code - 保留分类ID",
             "type": "main",
             "index": 0
           }
@@ -515,58 +398,18 @@
       "main": [
         [
           {
-            "node": "Code - 注入分类ID",
+            "node": "Code - 取得分类ID",
             "type": "main",
             "index": 0
           }
         ]
       ]
     },
-    "Code - 注入分类ID": {
-      "main": [
-        [
-          {
-            "node": "Merge - 分类",
-            "type": "main",
-            "index": 0
-          }
-        ]
-      ]
-    },
-    "Code - 保留分类ID": {
-      "main": [
-        [
-          {
-            "node": "Merge - 分类",
-            "type": "main",
-            "index": 1
-          }
-        ]
-      ]
-    },
-    "Merge - 分类": {
-      "main": [
-        [
-          {
-            "node": "IF - 标签缺失",
-            "type": "main",
-            "index": 0
-          }
-        ]
-      ]
-    },
-    "IF - 标签缺失": {
+    "Code - 取得分类ID": {
       "main": [
         [
           {
             "node": "Code - 展开标签",
-            "type": "main",
-            "index": 0
-          }
-        ],
-        [
-          {
-            "node": "Code - 保留标签",
             "type": "main",
             "index": 0
           }
@@ -588,36 +431,14 @@
       "main": [
         [
           {
-            "node": "Code - 合并标签ID",
+            "node": "Code - 重组标签ID",
             "type": "main",
             "index": 0
           }
         ]
       ]
     },
-    "Code - 合并标签ID": {
-      "main": [
-        [
-          {
-            "node": "Merge - 标签",
-            "type": "main",
-            "index": 0
-          }
-        ]
-      ]
-    },
-    "Code - 保留标签": {
-      "main": [
-        [
-          {
-            "node": "Merge - 标签",
-            "type": "main",
-            "index": 1
-          }
-        ]
-      ]
-    },
-    "Merge - 标签": {
+    "Code - 重组标签ID": {
       "main": [
         [
           {
