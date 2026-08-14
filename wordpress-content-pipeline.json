@@ -1,0 +1,588 @@
+{
+  "name": "WordPress 技术博客内容流水线（采集·润色·SEO·GEO·发布）",
+  "nodes": [
+    {
+      "id": "manual-trigger",
+      "name": "When clicking 'Test workflow'",
+      "type": "n8n-nodes-base.manualTrigger",
+      "typeVersion": 1,
+      "position": [-820, 180],
+      "parameters": {}
+    },
+    {
+      "id": "schedule-trigger",
+      "name": "Daily Schedule",
+      "type": "n8n-nodes-base.scheduleTrigger",
+      "typeVersion": 1.3,
+      "position": [-820, 480],
+      "parameters": {
+        "rule": {
+          "interval": [
+            {
+              "field": "time",
+              "type": "cron",
+              "cronExpression": "0 2 * * *"
+            }
+          ]
+        }
+      }
+    },
+    {
+      "id": "set-sources",
+      "name": "RSS Sources",
+      "type": "n8n-nodes-base.set",
+      "typeVersion": 3.4,
+      "position": [-560, 300],
+      "parameters": {
+        "assignments": {
+          "assignments": [
+            {
+              "id": "src-list",
+              "name": "sources",
+              "type": "array",
+              "value": "[{\"name\":\"Dev.to\",\"url\":\"https://dev.to/feed\",\"category\":\"Developer News\"},{\"name\":\"CSS-Tricks\",\"url\":\"https://css-tricks.com/feed/\",\"category\":\"Web Development\"},{\"name\":\"Smashing Magazine\",\"url\":\"https://www.smashingmagazine.com/feed/\",\"category\":\"Web Development\"},{\"name\":\"SitePoint\",\"url\":\"https://www.sitepoint.com/feed/\",\"category\":\"Web Development\"},{\"name\":\"Hacker News\",\"url\":\"https://hnrss.org/frontpage\",\"category\":\"Developer News\"},{\"name\":\"Product Hunt\",\"url\":\"https://www.producthunt.com/feed\",\"category\":\"Product Reviews\"},{\"name\":\"TechCrunch\",\"url\":\"https://techcrunch.com/feed/\",\"category\":\"Tech News\"},{\"name\":\"The Verge\",\"url\":\"https://www.theverge.com/rss/index.xml\",\"category\":\"Tech News\"}]"
+            }
+          ]
+        }
+      }
+    },
+    {
+      "id": "split-sources",
+      "name": "Split Sources",
+      "type": "n8n-nodes-base.splitOut",
+      "typeVersion": 1,
+      "position": [-320, 300],
+      "parameters": {
+        "fieldName": "sources"
+      }
+    },
+    {
+      "id": "rss-read",
+      "name": "Fetch Feed",
+      "type": "n8n-nodes-base.rssFeedRead",
+      "typeVersion": 1.2,
+      "position": [-80, 300],
+      "parameters": {
+        "url": "={{ $json.url }}"
+      }
+    },
+    {
+      "id": "remove-dups",
+      "name": "Remove Duplicate Links",
+      "type": "n8n-nodes-base.removeDuplicates",
+      "typeVersion": 2,
+      "position": [160, 300],
+      "parameters": {
+        "compare": "selectedFields",
+        "fieldsToCompare": [
+          {
+            "field1": "link"
+          }
+        ]
+      }
+    },
+    {
+      "id": "check-processed",
+      "name": "Already Processed?",
+      "type": "n8n-nodes-base.dataTable",
+      "typeVersion": 1.1,
+      "position": [400, 300],
+      "onError": "continueRegularOutput",
+      "parameters": {
+        "resource": "row",
+        "operation": "rowNotExists",
+        "tableName": "processed_articles",
+        "matchFields": [
+          {
+            "fieldName": "link"
+          }
+        ]
+      }
+    },
+    {
+      "id": "loop-articles",
+      "name": "Process Articles",
+      "type": "n8n-nodes-base.splitInBatches",
+      "typeVersion": 3,
+      "position": [640, 300],
+      "parameters": {
+        "batchSize": 1
+      }
+    },
+    {
+      "id": "wait-delay",
+      "name": "Polite Delay",
+      "type": "n8n-nodes-base.wait",
+      "typeVersion": 1.1,
+      "position": [880, 120],
+      "parameters": {
+        "resume": "timeInterval",
+        "amount": 3,
+        "unit": "seconds"
+      }
+    },
+    {
+      "id": "fetch-article",
+      "name": "Fetch Full Article",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.4,
+      "position": [1120, 120],
+      "parameters": {
+        "method": "GET",
+        "url": "={{ $json.link }}",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "User-Agent",
+              "value": "Mozilla/5.0 (compatible; TechBlogBot/1.0; +https://yourblog.example.com)"
+            },
+            {
+              "name": "Accept",
+              "value": "text/html,application/xhtml+xml"
+            }
+          ]
+        },
+        "options": {
+          "timeout": 30000,
+          "response": {
+            "responseFormat": "text"
+          }
+        }
+      }
+    },
+    {
+      "id": "chat-model-rewrite",
+      "name": "OpenAI Chat Model",
+      "type": "@n8n/n8n-nodes-langchain.lmChatOpenAi",
+      "typeVersion": 1.2,
+      "position": [1360, 420],
+      "parameters": {
+        "options": {
+          "model": "gpt-4o",
+          "temperature": 0.7
+        }
+      },
+      "credentials": {
+        "openAiApi": {
+          "id": "",
+          "name": "OpenAI account"
+        }
+      }
+    },
+    {
+      "id": "rewrite-agent",
+      "name": "Rewrite Article",
+      "type": "@n8n/n8n-nodes-langchain.agent",
+      "typeVersion": 3.1,
+      "position": [1360, 120],
+      "parameters": {
+        "promptType": "define",
+        "text": "=You are rewriting an article for an English technical blog. Rewrite the source article below into an ORIGINAL, polished, in-depth English technical article.\n\nRules:\n- Rewrite completely in your own words; keep technical facts accurate; aim for 90%+ uniqueness vs the source.\n- Restructure with clear sections (use proper HTML: <h2>/<h3>, <p>, <ul>, <pre><code> for code).\n- Add practical code examples and deeper technical explanation where valuable.\n- Output clean, valid HTML only (no markdown, no YAML, no commentary).\n- Keep factual content; do not invent false claims.\n- Length: 800-1500 words.\n\nSource title: {{ $json.title }}\nSource URL: {{ $json.link }}\nSource HTML:\n{{ $json.body }}",
+        "options": {
+          "systemMessage": "You are a senior English technical writer specializing in software development and tech reviews."
+        }
+      }
+    },
+    {
+      "id": "chat-model-seo",
+      "name": "OpenAI Chat Model 2",
+      "type": "@n8n/n8n-nodes-langchain.lmChatOpenAi",
+      "typeVersion": 1.2,
+      "position": [1600, 420],
+      "parameters": {
+        "options": {
+          "model": "gpt-4o",
+          "temperature": 0.4
+        }
+      },
+      "credentials": {
+        "openAiApi": {
+          "id": "",
+          "name": "OpenAI account"
+        }
+      }
+    },
+    {
+      "id": "seo-parser",
+      "name": "Structured Output Parser",
+      "type": "@n8n/n8n-nodes-langchain.outputParserStructured",
+      "typeVersion": 1.3,
+      "position": [1720, 420],
+      "parameters": {
+        "jsonSchema": {
+          "type": "object",
+          "properties": {
+            "title": {
+              "type": "string"
+            },
+            "slug": {
+              "type": "string"
+            },
+            "metaDescription": {
+              "type": "string"
+            },
+            "keywords": {
+              "type": "array",
+              "items": {
+                "type": "string"
+              }
+            },
+            "primaryCategory": {
+              "type": "string"
+            },
+            "geoBlock": {
+              "type": "string"
+            },
+            "faq": {
+              "type": "array",
+              "items": {
+                "type": "object",
+                "properties": {
+                  "question": {
+                    "type": "string"
+                  },
+                  "answer": {
+                    "type": "string"
+                  }
+                },
+                "required": [
+                  "question",
+                  "answer"
+                ]
+              }
+            }
+          },
+          "required": [
+            "title",
+            "slug",
+            "metaDescription",
+            "keywords",
+            "primaryCategory",
+            "geoBlock",
+            "faq"
+          ]
+        }
+      }
+    },
+    {
+      "id": "seo-geo-agent",
+      "name": "SEO & GEO Agent",
+      "type": "@n8n/n8n-nodes-langchain.agent",
+      "typeVersion": 3.1,
+      "position": [1600, 120],
+      "parameters": {
+        "promptType": "define",
+        "text": "=You are an SEO and GEO (Generative Engine Optimization) expert for a technical blog. Analyze the rewritten article below and produce the required structured output.\n\nSEO requirements:\n- title: compelling meta title, max 60 characters.\n- metaDescription: max 160 characters.\n- slug: short URL slug (lowercase, hyphens).\n- keywords: 5-8 keywords.\n- primaryCategory: one category from this list if it fits, else a sensible tech category: Developer News, Web Development, Tech News, Product Reviews.\n\nGEO requirements (optimize for AI search engines like ChatGPT / Perplexity / Google AI Overview):\n- geoBlock: a 3-5 sentence direct-answer summary for the top of the article, with clear definitions and a concrete fact/stat where reasonable.\n- faq: 3-5 question/answer pairs that AI engines frequently surface.\n\nArticle:\n{{ $json.output }}",
+        "options": {
+          "systemMessage": "You are a senior SEO and GEO (Generative Engine Optimization) consultant. Always return valid JSON matching the provided schema."
+        },
+        "hasOutputParser": true
+      }
+    },
+    {
+      "id": "attach-article",
+      "name": "Attach Article",
+      "type": "n8n-nodes-base.set",
+      "typeVersion": 3.4,
+      "position": [1840, 120],
+      "parameters": {
+        "assignments": {
+          "assignments": [
+            {
+              "id": "attach-article-html",
+              "name": "articleHtml",
+              "type": "string",
+              "value": "={{ $('Rewrite Article').item.json.output }}"
+            }
+          ]
+        }
+      }
+    },
+    {
+      "id": "compose-post",
+      "name": "Compose WordPress Payload",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [2080, 120],
+      "parameters": {
+        "mode": "runOnceForAllItems",
+        "jsCode": "const seo = $json.output;\nconst articleHtml = $json.articleHtml || '';\nconst keywords = Array.isArray(seo.keywords) ? seo.keywords : [];\nconst faq = Array.isArray(seo.faq) ? seo.faq : [];\n\nconst faqLd = {\n  '@context': 'https://schema.org',\n  '@type': 'FAQPage',\n  mainEntity: faq.map((f) => ({\n    '@type': 'Question',\n    name: f.question,\n    acceptedAnswer: { '@type': 'Answer', text: f.answer },\n  })),\n};\n\nconst articleLd = {\n  '@context': 'https://schema.org',\n  '@type': 'Article',\n  headline: seo.title,\n  description: seo.metaDescription,\n  keywords: keywords.join(', '),\n};\n\nconst faqHtml = faq.map((f) => `<h3>${f.question}</h3><p>${f.answer}</p>`).join('\\n');\n\nconst content = [\n  seo.geoBlock ? `<p><strong>Quick Answer:</strong> ${seo.geoBlock}</p>` : '',\n  articleHtml,\n  faqHtml ? `<h2>Frequently Asked Questions</h2>\\n${faqHtml}` : '',\n  `<script type=\"application/ld+json\">${JSON.stringify(faqLd)}</script>`,\n  `<script type=\"application/ld+json\">${JSON.stringify(articleLd)}</script>`,\n].filter(Boolean).join('\\n\\n');\n\nreturn [{\n  json: {\n    title: seo.title,\n    slug: seo.slug,\n    metaDescription: seo.metaDescription,\n    tags: keywords.join(','),\n    category: seo.primaryCategory,\n    sourceUrl: $json.link,\n    content,\n  },\n}];"
+      }
+    },
+    {
+      "id": "wp-create",
+      "name": "Create Post",
+      "type": "n8n-nodes-base.wordpress",
+      "typeVersion": 1,
+      "position": [2320, 120],
+      "parameters": {
+        "resource": "post",
+        "operation": "create",
+        "title": "={{ $json.title }}",
+        "content": "={{ $json.content }}",
+        "status": "draft",
+        "slug": "={{ $json.slug }}",
+        "tags": "={{ $json.tags }}",
+        "categories": "={{ $json.category }}"
+      },
+      "credentials": {
+        "wordpressApi": {
+          "id": "",
+          "name": "WordPress account"
+        }
+      }
+    },
+    {
+      "id": "record-processed",
+      "name": "Record Processed",
+      "type": "n8n-nodes-base.dataTable",
+      "typeVersion": 1.1,
+      "position": [2560, 120],
+      "onError": "continueRegularOutput",
+      "parameters": {
+        "resource": "row",
+        "operation": "insert",
+        "tableName": "processed_articles",
+        "fields": [
+          {
+            "fieldName": "link",
+            "fieldValue": "={{ $('Compose WordPress Payload').item.json.sourceUrl }}"
+          },
+          {
+            "fieldName": "title",
+            "fieldValue": "={{ $('Compose WordPress Payload').item.json.title }}"
+          },
+          {
+            "fieldName": "publishedAt",
+            "fieldValue": "={{ $now.toISOString() }}"
+          }
+        ]
+      }
+    },
+    {
+      "id": "setup-note",
+      "name": "Setup Instructions",
+      "type": "n8n-nodes-base.stickyNote",
+      "typeVersion": 1,
+      "position": [-820, 760],
+      "width": 340,
+      "height": 220,
+      "parameters": {
+        "content": "## 部署前必做\n1. 创建数据表 processed_articles（Data Table 节点 → Table → Create）：字段 link / title / publishedAt，用于跨运行去重。\n2. 在 OpenAI Chat Model 节点配置 OpenAI API Key。\n3. 在 Create Post 节点选择 WordPress 凭据（站点 URL + 用户名 + 应用密码）。\n4. 在 RSS Sources 节点按需增删采集源。\n5. 先手动触发测试，再到 Create Post 节点把 status 从 draft 改为 publish。\n\n## 设计说明\n- 每天 02:00 自动运行，同时支持手动触发。\n- 限速：每篇抓取前等待 3 秒，保护目标站点与 10M 上行带宽。\n- 文章以 draft 发布，人工审核后再上线。\n- 正文内嵌 FAQ 模块与 JSON-LD（Article + FAQPage）结构化数据，兼顾 SEO 与 GEO（AI 搜索优化）。",
+        "height": 220,
+        "width": 340
+      }
+    }
+  ],
+  "connections": {
+    "When clicking 'Test workflow'": {
+      "main": [
+        [
+          {
+            "node": "RSS Sources",
+            "type": "n8n-nodes-base.set",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Daily Schedule": {
+      "main": [
+        [
+          {
+            "node": "RSS Sources",
+            "type": "n8n-nodes-base.set",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "RSS Sources": {
+      "main": [
+        [
+          {
+            "node": "Split Sources",
+            "type": "n8n-nodes-base.splitOut",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Split Sources": {
+      "main": [
+        [
+          {
+            "node": "Fetch Feed",
+            "type": "n8n-nodes-base.rssFeedRead",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Fetch Feed": {
+      "main": [
+        [
+          {
+            "node": "Remove Duplicate Links",
+            "type": "n8n-nodes-base.removeDuplicates",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Remove Duplicate Links": {
+      "main": [
+        [
+          {
+            "node": "Already Processed?",
+            "type": "n8n-nodes-base.dataTable",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Already Processed?": {
+      "main": [
+        [
+          {
+            "node": "Process Articles",
+            "type": "n8n-nodes-base.splitInBatches",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Process Articles": {
+      "main": [
+        [],
+        [
+          {
+            "node": "Polite Delay",
+            "type": "n8n-nodes-base.wait",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Polite Delay": {
+      "main": [
+        [
+          {
+            "node": "Fetch Full Article",
+            "type": "n8n-nodes-base.httpRequest",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Fetch Full Article": {
+      "main": [
+        [
+          {
+            "node": "Rewrite Article",
+            "type": "@n8n/n8n-nodes-langchain.agent",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Rewrite Article": {
+      "main": [
+        [
+          {
+            "node": "SEO & GEO Agent",
+            "type": "@n8n/n8n-nodes-langchain.agent",
+            "index": 0
+          }
+        ]
+      ],
+      "ai_languageModel": [
+        [
+          {
+            "node": "OpenAI Chat Model",
+            "type": "@n8n/n8n-nodes-langchain.lmChatOpenAi",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "SEO & GEO Agent": {
+      "main": [
+        [
+          {
+            "node": "Attach Article",
+            "type": "n8n-nodes-base.set",
+            "index": 0
+          }
+        ]
+      ],
+      "ai_languageModel": [
+        [
+          {
+            "node": "OpenAI Chat Model 2",
+            "type": "@n8n/n8n-nodes-langchain.lmChatOpenAi",
+            "index": 0
+          }
+        ]
+      ],
+      "ai_outputParser": [
+        [
+          {
+            "node": "Structured Output Parser",
+            "type": "@n8n/n8n-nodes-langchain.outputParserStructured",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Attach Article": {
+      "main": [
+        [
+          {
+            "node": "Compose WordPress Payload",
+            "type": "n8n-nodes-base.code",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Compose WordPress Payload": {
+      "main": [
+        [
+          {
+            "node": "Create Post",
+            "type": "n8n-nodes-base.wordpress",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Create Post": {
+      "main": [
+        [
+          {
+            "node": "Record Processed",
+            "type": "n8n-nodes-base.dataTable",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Record Processed": {
+      "main": [
+        [
+          {
+            "node": "Process Articles",
+            "type": "n8n-nodes-base.splitInBatches",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "settings": {
+    "executionOrder": "v1",
+    "timezone": "Asia/Shanghai"
+  }
+}
